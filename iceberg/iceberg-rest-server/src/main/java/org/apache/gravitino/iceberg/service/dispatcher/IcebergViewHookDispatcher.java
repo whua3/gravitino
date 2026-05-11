@@ -96,40 +96,7 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
   @Override
   public void dropView(IcebergRequestContext context, TableIdentifier viewIdentifier) {
     dispatcher.dropView(context, viewIdentifier);
-
-    // Remove view from Gravitino entity store
-    EntityStore store = GravitinoEnv.getInstance().entityStore();
-    try {
-      if (store != null) {
-        store.delete(
-            IcebergIdentifierUtils.toGravitinoTableIdentifier(
-                metalake, context.catalogName(), viewIdentifier),
-            Entity.EntityType.VIEW);
-        LOG.info(
-            "Successfully removed view from Gravitino entity store: {}.{}.{}.{}",
-            metalake,
-            context.catalogName(),
-            viewIdentifier.namespace(),
-            viewIdentifier.name());
-      }
-    } catch (NoSuchEntityException ignore) {
-      // Ignore if the view entity does not exist in the store
-      LOG.debug(
-          "View entity does not exist in store: {}.{}.{}.{}",
-          metalake,
-          context.catalogName(),
-          viewIdentifier.namespace(),
-          viewIdentifier.name());
-    } catch (IOException ioe) {
-      LOG.error(
-          "Failed to delete view entity from store: {}.{}.{}.{}",
-          metalake,
-          context.catalogName(),
-          viewIdentifier.namespace(),
-          viewIdentifier.name(),
-          ioe);
-      throw new RuntimeException("Failed to delete view entity from store", ioe);
-    }
+    reconcileViewEntity(context, viewIdentifier);
   }
 
   @Override
@@ -186,6 +153,9 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
       LOG.error("Failed to rename view entity in store from {} to {}", sourceIdent, destIdent, ioe);
       throw new RuntimeException("Failed to rename view entity in store", ioe);
     }
+
+    reconcileViewEntity(context, renameViewRequest.source());
+    reconcileViewEntity(context, renameViewRequest.destination());
   }
 
   /**
@@ -225,6 +195,58 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
             viewName,
             e.getMessage());
       }
+    }
+  }
+
+  private void reconcileViewEntity(IcebergRequestContext context, TableIdentifier viewIdentifier) {
+    // IRC requests can be served by different Gravitino nodes. Without a distributed TreeLock,
+    // another node may drop or recreate the same Iceberg view between the backend operation and
+    // this hook's EntityStore mutation. Reconcile the local Gravitino entity with the Iceberg
+    // backend state to avoid leaving stale/orphan view metadata in multi-node deployments.
+    if (dispatcher.viewExists(context, viewIdentifier)) {
+      importView(context.catalogName(), viewIdentifier.namespace(), viewIdentifier.name());
+      return;
+    }
+
+    deleteViewEntity(context.catalogName(), viewIdentifier);
+
+    if (dispatcher.viewExists(context, viewIdentifier)) {
+      importView(context.catalogName(), viewIdentifier.namespace(), viewIdentifier.name());
+    }
+  }
+
+  private void deleteViewEntity(String catalogName, TableIdentifier viewIdentifier) {
+    EntityStore store = GravitinoEnv.getInstance().entityStore();
+    try {
+      if (store != null) {
+        store.delete(
+            IcebergIdentifierUtils.toGravitinoTableIdentifier(
+                metalake, catalogName, viewIdentifier),
+            Entity.EntityType.VIEW);
+        LOG.info(
+            "Successfully removed view from Gravitino entity store: {}.{}.{}.{}",
+            metalake,
+            catalogName,
+            viewIdentifier.namespace(),
+            viewIdentifier.name());
+      }
+    } catch (NoSuchEntityException ignore) {
+      // Ignore if the view entity does not exist in the store
+      LOG.debug(
+          "View entity does not exist in store: {}.{}.{}.{}",
+          metalake,
+          catalogName,
+          viewIdentifier.namespace(),
+          viewIdentifier.name());
+    } catch (IOException ioe) {
+      LOG.error(
+          "Failed to delete view entity from store: {}.{}.{}.{}",
+          metalake,
+          catalogName,
+          viewIdentifier.namespace(),
+          viewIdentifier.name(),
+          ioe);
+      throw new RuntimeException("Failed to delete view entity from store", ioe);
     }
   }
 }

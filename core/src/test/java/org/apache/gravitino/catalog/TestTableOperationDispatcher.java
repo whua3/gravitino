@@ -44,9 +44,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -254,6 +256,62 @@ public class TestTableOperationDispatcher extends TestOperationDispatcher {
     Assertions.assertEquals("test", tableImportedEntity.auditInfo().creator());
     // Audit info is gotten from the catalog, not from the entity store
     Assertions.assertEquals("test", loadedTable4.auditInfo().creator());
+  }
+
+  @Test
+  public void testConcurrentImportTableReusesExistingEntity() throws IOException {
+    Namespace tableNs = Namespace.of(metalake, catalog, "schema52");
+    Map<String, String> props = ImmutableMap.of("k1", "v1", "k2", "v2");
+    schemaOperationDispatcher.createSchema(NameIdentifier.of(tableNs.levels()), "comment", props);
+
+    NameIdentifier tableIdent = NameIdentifier.of(tableNs, "tableConcurrent");
+    Column[] columns =
+        new Column[] {
+          TestColumn.builder()
+              .withName("col1")
+              .withPosition(0)
+              .withType(Types.StringType.get())
+              .build(),
+          TestColumn.builder()
+              .withName("col2")
+              .withPosition(1)
+              .withType(Types.StringType.get())
+              .build()
+        };
+
+    Table table =
+        tableOperationDispatcher.createTable(
+            tableIdent, columns, "comment", props, new Transform[0]);
+
+    AuditInfo concurrentAudit =
+        AuditInfo.builder().withCreator("concurrent").withCreateTime(Instant.now()).build();
+    TableEntity concurrentTableEntity =
+        TableEntity.builder()
+            .withId(999L)
+            .withName(tableIdent.name())
+            .withNamespace(tableIdent.namespace())
+            .withColumns(
+                IntStream.range(0, table.columns().length)
+                    .mapToObj(
+                        i ->
+                            ColumnEntity.toColumnEntity(table.columns()[i], i, 0L, concurrentAudit))
+                    .collect(Collectors.toList()))
+            .withAuditInfo(concurrentAudit)
+            .build();
+
+    reset(entityStore);
+    doThrow(new NoSuchEntityException("mock error"))
+        .doReturn(concurrentTableEntity)
+        .when(entityStore)
+        .get(any(), eq(Entity.EntityType.TABLE), any());
+    doThrow(new EntityAlreadyExistsException("mock conflict"))
+        .when(entityStore)
+        .put(any(), anyBoolean());
+
+    Table loadedTable =
+        Assertions.assertDoesNotThrow(() -> tableOperationDispatcher.loadTable(tableIdent));
+    Assertions.assertEquals(tableIdent.name(), loadedTable.name());
+    Assertions.assertEquals("comment", loadedTable.comment());
   }
 
   @Test
