@@ -40,6 +40,7 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -203,6 +204,36 @@ public class TestSchemaOperationDispatcher extends TestOperationDispatcher {
     testProperties(props, loadedSchema3.properties());
     // Audit info is gotten from catalog, not from the entity store
     Assertions.assertEquals("test", loadedSchema3.auditInfo().creator());
+  }
+
+  @Test
+  public void testConcurrentImportSchemaReusesExistingEntity() throws IOException {
+    NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalog, "schemaConcurrent");
+    Map<String, String> props = ImmutableMap.of("k1", "v1", "k2", "v2");
+    dispatcher.createSchema(schemaIdent, "comment", props);
+
+    AuditInfo concurrentAudit =
+        AuditInfo.builder().withCreator("concurrent").withCreateTime(Instant.now()).build();
+    SchemaEntity concurrentSchemaEntity =
+        SchemaEntity.builder()
+            .withId(999L)
+            .withName(schemaIdent.name())
+            .withNamespace(schemaIdent.namespace())
+            .withAuditInfo(concurrentAudit)
+            .build();
+
+    reset(entityStore);
+    doThrow(new NoSuchEntityException("mock error"))
+        .doReturn(concurrentSchemaEntity)
+        .when(entityStore)
+        .get(any(), eq(Entity.EntityType.SCHEMA), any());
+    doThrow(new EntityAlreadyExistsException("mock conflict"))
+        .when(entityStore)
+        .put(any(), anyBoolean());
+
+    Schema loadedSchema = Assertions.assertDoesNotThrow(() -> dispatcher.loadSchema(schemaIdent));
+    Assertions.assertEquals(schemaIdent.name(), loadedSchema.name());
+    Assertions.assertEquals("comment", loadedSchema.comment());
   }
 
   @Test

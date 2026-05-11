@@ -477,6 +477,19 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
     try {
       store.put(tableEntity, true);
     } catch (EntityAlreadyExistsException e) {
+      TableEntity concurrentTableEntity = getEntity(identifier, TABLE, TableEntity.class);
+      if (concurrentTableEntity != null) {
+        LOG.info(
+            "Table {} was imported concurrently, reusing the existing entity in Gravitino.",
+            identifier);
+        return EntityCombinedTable.of(table.tableFromCatalog(), concurrentTableEntity)
+            .withHiddenProperties(
+                getHiddenPropertyNames(
+                    getCatalogIdentifier(identifier),
+                    HasPropertyMetadata::tablePropertiesMetadata,
+                    table.tableFromCatalog().properties()));
+      }
+
       LOG.error("Failed to import table {} with id {} to the store.", identifier, uid, e);
       throw new UnsupportedOperationException(
           "Table managed by multiple catalogs. This may cause unexpected issues such as privilege conflicts. "

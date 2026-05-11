@@ -387,6 +387,14 @@ public class SchemaOperationDispatcher extends OperationDispatcher implements Sc
     try {
       store.put(schemaEntity, true);
     } catch (EntityAlreadyExistsException e) {
+      SchemaEntity concurrentSchemaEntity = getEntity(identifier, SCHEMA, SchemaEntity.class);
+      if (concurrentSchemaEntity != null) {
+        LOG.info(
+            "Schema {} was imported concurrently, reusing the existing entity in Gravitino.",
+            identifier);
+        return;
+      }
+
       LOG.error("Failed to import schema {} with id {} to the store.", identifier, uid, e);
       throw new UnsupportedOperationException(
           "Schema managed by multiple catalogs. This may cause unexpected issues such as privilege conflicts. "
