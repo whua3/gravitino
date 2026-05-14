@@ -91,6 +91,9 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
   public void dropTable(
       IcebergRequestContext context, TableIdentifier tableIdentifier, boolean purgeRequested) {
     dispatcher.dropTable(context, tableIdentifier, purgeRequested);
+    // Reconcile against Iceberg backend state — without a distributed TreeLock,
+    // another node may recreate the same table between the drop above and the
+    // EntityStore delete, leaving a stale Gravitino entity if we blindly delete.
     reconcileTableEntity(context, tableIdentifier);
   }
 
@@ -148,6 +151,9 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
       throw new RuntimeException("io exception when renaming table entity", ioe);
     }
 
+    // IRC rename can race with another node's drop/create on either name.
+    // Reconcile both ends against the Iceberg backend so we don't leave a
+    // stale entity on the source or miss importing a re-created destination.
     reconcileTableEntity(context, renameTableRequest.source());
     reconcileTableEntity(context, renameTableRequest.destination());
   }

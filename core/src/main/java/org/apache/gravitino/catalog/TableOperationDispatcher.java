@@ -477,6 +477,9 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
     try {
       store.put(tableEntity, true);
     } catch (EntityAlreadyExistsException e) {
+      // HA race: another Gravitino node finished importing the same table between
+      // our internalLoadTable check above and this put. Reuse the existing entity
+      // instead of failing the caller's load with "managed by multiple catalogs".
       TableEntity concurrentTableEntity = getEntity(identifier, TABLE, TableEntity.class);
       if (concurrentTableEntity != null) {
         LOG.info(

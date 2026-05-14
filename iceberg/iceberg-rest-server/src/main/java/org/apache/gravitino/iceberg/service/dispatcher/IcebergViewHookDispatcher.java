@@ -96,6 +96,9 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
   @Override
   public void dropView(IcebergRequestContext context, TableIdentifier viewIdentifier) {
     dispatcher.dropView(context, viewIdentifier);
+    // Reconcile against Iceberg backend state — without a distributed TreeLock,
+    // another node may recreate the same view between the drop above and the
+    // EntityStore delete, leaving a stale Gravitino entity if we blindly delete.
     reconcileViewEntity(context, viewIdentifier);
   }
 
@@ -154,6 +157,9 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
       throw new RuntimeException("Failed to rename view entity in store", ioe);
     }
 
+    // IRC rename can race with another node's drop/create on either name.
+    // Reconcile both ends against the Iceberg backend so we don't leave a
+    // stale entity on the source or miss importing a re-created destination.
     reconcileViewEntity(context, renameViewRequest.source());
     reconcileViewEntity(context, renameViewRequest.destination());
   }

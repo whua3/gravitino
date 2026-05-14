@@ -387,6 +387,10 @@ public class SchemaOperationDispatcher extends OperationDispatcher implements Sc
     try {
       store.put(schemaEntity, true);
     } catch (EntityAlreadyExistsException e) {
+      // HA race: another Gravitino node finished importing the same schema between
+      // our internalLoadSchema check above and this put. The entity is already in
+      // the store, so the import is effectively a no-op — let the caller's load
+      // request succeed instead of failing with "managed by multiple catalogs".
       SchemaEntity concurrentSchemaEntity = getEntity(identifier, SCHEMA, SchemaEntity.class);
       if (concurrentSchemaEntity != null) {
         LOG.info(
