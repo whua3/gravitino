@@ -392,7 +392,7 @@ public class SchemaOperationDispatcher extends OperationDispatcher implements Sc
       // the store, so the import is effectively a no-op — let the caller's load
       // request succeed instead of failing with "managed by multiple catalogs".
       SchemaEntity concurrentSchemaEntity = getEntity(identifier, SCHEMA, SchemaEntity.class);
-      if (concurrentSchemaEntity != null) {
+      if (isSameImportedSchema(concurrentSchemaEntity, stringId)) {
         LOG.info(
             "Schema {} was imported concurrently, reusing the existing entity in Gravitino.",
             identifier);
@@ -407,6 +407,10 @@ public class SchemaOperationDispatcher extends OperationDispatcher implements Sc
       LOG.error(FormattedErrorMessages.STORE_OP_FAILURE, "put", identifier, e);
       throw new RuntimeException("Fail to import schema entity to the store.", e);
     }
+  }
+
+  private boolean isSameImportedSchema(SchemaEntity schemaEntity, StringIdentifier stringId) {
+    return schemaEntity != null && (stringId == null || schemaEntity.id().equals(stringId.id()));
   }
 
   private EntityCombinedSchema internalLoadSchema(NameIdentifier ident) {

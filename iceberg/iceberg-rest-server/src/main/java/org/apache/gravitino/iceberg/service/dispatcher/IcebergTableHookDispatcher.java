@@ -44,8 +44,12 @@ import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.PlanTableScanResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class IcebergTableHookDispatcher implements IcebergTableOperationDispatcher {
+
+  private static final Logger LOG = LoggerFactory.getLogger(IcebergTableHookDispatcher.class);
 
   private final IcebergTableOperationDispatcher dispatcher;
   private String metalake;
@@ -94,7 +98,7 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
     // Reconcile against Iceberg backend state — without a distributed TreeLock,
     // another node may recreate the same table between the drop above and the
     // EntityStore delete, leaving a stale Gravitino entity if we blindly delete.
-    reconcileTableEntity(context, tableIdentifier);
+    bestEffortReconcileTableEntity(context, tableIdentifier);
   }
 
   @Override
@@ -154,8 +158,8 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
     // IRC rename can race with another node's drop/create on either name.
     // Reconcile both ends against the Iceberg backend so we don't leave a
     // stale entity on the source or miss importing a re-created destination.
-    reconcileTableEntity(context, renameTableRequest.source());
-    reconcileTableEntity(context, renameTableRequest.destination());
+    bestEffortReconcileTableEntity(context, renameTableRequest.source());
+    bestEffortReconcileTableEntity(context, renameTableRequest.destination());
   }
 
   @Override
@@ -231,6 +235,20 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
 
     if (dispatcher.tableExists(context, tableIdentifier)) {
       importTableEntity(context.catalogName(), tableIdentifier.namespace(), tableIdentifier.name());
+    }
+  }
+
+  private void bestEffortReconcileTableEntity(
+      IcebergRequestContext context, TableIdentifier tableIdentifier) {
+    try {
+      reconcileTableEntity(context, tableIdentifier);
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "Failed to reconcile Gravitino table entity after the Iceberg backend operation "
+              + "succeeded. catalog={}, table={}",
+          context.catalogName(),
+          tableIdentifier,
+          e);
     }
   }
 

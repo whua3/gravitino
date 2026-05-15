@@ -286,7 +286,7 @@ public class TestIcebergViewHookDispatcher {
   }
 
   @Test
-  public void testDropViewHandlesIOException() throws Exception {
+  public void testDropViewIgnoresReconciliationIOException() throws Exception {
     TableIdentifier viewIdent = TableIdentifier.of(Namespace.of(SCHEMA_NAME), VIEW_NAME);
 
     // Simulate IO error
@@ -296,11 +296,8 @@ public class TestIcebergViewHookDispatcher {
         .when(mockEntityStore)
         .delete(eq(expectedIdent), eq(Entity.EntityType.VIEW));
 
-    // Should throw RuntimeException wrapping the IOException
-    RuntimeException exception =
-        assertThrows(RuntimeException.class, () -> hookDispatcher.dropView(mockContext, viewIdent));
+    hookDispatcher.dropView(mockContext, viewIdent);
 
-    assertEquals("Failed to delete view entity from store", exception.getMessage());
     verify(mockExecutor, times(1)).dropView(mockContext, viewIdent);
   }
 
@@ -340,6 +337,26 @@ public class TestIcebergViewHookDispatcher {
         IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, destIdent);
     verify(mockEntityStore, times(1)).delete(eq(sourceGravitinoIdent), eq(Entity.EntityType.VIEW));
     verify(mockViewDispatcher, times(1)).loadView(eq(destGravitinoIdent));
+  }
+
+  @Test
+  public void testRenameViewIgnoresReconciliationDeleteFailure() throws Exception {
+    TableIdentifier sourceIdent = TableIdentifier.of(Namespace.of(SCHEMA_NAME), "old_view");
+    TableIdentifier destIdent = TableIdentifier.of(Namespace.of(SCHEMA_NAME), "new_view");
+    RenameTableRequest renameRequest =
+        RenameTableRequest.builder().withSource(sourceIdent).withDestination(destIdent).build();
+    when(mockExecutor.viewExists(mockContext, sourceIdent)).thenReturn(false);
+
+    NameIdentifier sourceGravitinoIdent =
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, sourceIdent);
+    doThrow(new IOException("IO error"))
+        .when(mockEntityStore)
+        .delete(eq(sourceGravitinoIdent), eq(Entity.EntityType.VIEW));
+
+    hookDispatcher.renameView(mockContext, renameRequest);
+
+    verify(mockExecutor, times(1)).renameView(mockContext, renameRequest);
+    verify(mockEntityStore, times(1)).delete(eq(sourceGravitinoIdent), eq(Entity.EntityType.VIEW));
   }
 
   @Test

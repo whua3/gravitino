@@ -481,7 +481,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
       // our internalLoadTable check above and this put. Reuse the existing entity
       // instead of failing the caller's load with "managed by multiple catalogs".
       TableEntity concurrentTableEntity = getEntity(identifier, TABLE, TableEntity.class);
-      if (concurrentTableEntity != null) {
+      if (isSameImportedTable(concurrentTableEntity, stringId)) {
         LOG.info(
             "Table {} was imported concurrently, reusing the existing entity in Gravitino.",
             identifier);
@@ -508,6 +508,10 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
                 getCatalogIdentifier(identifier),
                 HasPropertyMetadata::tablePropertiesMetadata,
                 table.tableFromCatalog().properties()));
+  }
+
+  private boolean isSameImportedTable(TableEntity tableEntity, StringIdentifier stringId) {
+    return tableEntity != null && (stringId == null || tableEntity.id().equals(stringId.id()));
   }
 
   private EntityCombinedTable internalLoadTable(NameIdentifier ident) {

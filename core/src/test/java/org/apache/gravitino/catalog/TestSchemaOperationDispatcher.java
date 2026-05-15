@@ -211,12 +211,13 @@ public class TestSchemaOperationDispatcher extends TestOperationDispatcher {
     NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalog, "schemaConcurrent");
     Map<String, String> props = ImmutableMap.of("k1", "v1", "k2", "v2");
     dispatcher.createSchema(schemaIdent, "comment", props);
+    SchemaEntity importedSchemaEntity = entityStore.get(schemaIdent, SCHEMA, SchemaEntity.class);
 
     AuditInfo concurrentAudit =
         AuditInfo.builder().withCreator("concurrent").withCreateTime(Instant.now()).build();
     SchemaEntity concurrentSchemaEntity =
         SchemaEntity.builder()
-            .withId(999L)
+            .withId(importedSchemaEntity.id())
             .withName(schemaIdent.name())
             .withNamespace(schemaIdent.namespace())
             .withAuditInfo(concurrentAudit)
@@ -234,6 +235,38 @@ public class TestSchemaOperationDispatcher extends TestOperationDispatcher {
     Schema loadedSchema = Assertions.assertDoesNotThrow(() -> dispatcher.loadSchema(schemaIdent));
     Assertions.assertEquals(schemaIdent.name(), loadedSchema.name());
     Assertions.assertEquals("comment", loadedSchema.comment());
+  }
+
+  @Test
+  public void testConcurrentImportSchemaFailsOnMismatchedIdentifier() throws IOException {
+    NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalog, "schemaConcurrentMismatch");
+    Map<String, String> props = ImmutableMap.of("k1", "v1", "k2", "v2");
+    dispatcher.createSchema(schemaIdent, "comment", props);
+    SchemaEntity importedSchemaEntity = entityStore.get(schemaIdent, SCHEMA, SchemaEntity.class);
+
+    AuditInfo concurrentAudit =
+        AuditInfo.builder().withCreator("concurrent").withCreateTime(Instant.now()).build();
+    SchemaEntity mismatchedSchemaEntity =
+        SchemaEntity.builder()
+            .withId(importedSchemaEntity.id() + 1)
+            .withName(schemaIdent.name())
+            .withNamespace(schemaIdent.namespace())
+            .withAuditInfo(concurrentAudit)
+            .build();
+
+    reset(entityStore);
+    doThrow(new NoSuchEntityException("mock error"))
+        .doReturn(mismatchedSchemaEntity)
+        .when(entityStore)
+        .get(any(), eq(Entity.EntityType.SCHEMA), any());
+    doThrow(new EntityAlreadyExistsException("mock conflict"))
+        .when(entityStore)
+        .put(any(), anyBoolean());
+
+    UnsupportedOperationException exception =
+        Assertions.assertThrows(
+            UnsupportedOperationException.class, () -> dispatcher.loadSchema(schemaIdent));
+    Assertions.assertTrue(exception.getMessage().contains("Schema managed by multiple catalogs"));
   }
 
   @Test

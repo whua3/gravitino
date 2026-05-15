@@ -99,7 +99,7 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
     // Reconcile against Iceberg backend state — without a distributed TreeLock,
     // another node may recreate the same view between the drop above and the
     // EntityStore delete, leaving a stale Gravitino entity if we blindly delete.
-    reconcileViewEntity(context, viewIdentifier);
+    bestEffortReconcileViewEntity(context, viewIdentifier);
   }
 
   @Override
@@ -160,8 +160,8 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
     // IRC rename can race with another node's drop/create on either name.
     // Reconcile both ends against the Iceberg backend so we don't leave a
     // stale entity on the source or miss importing a re-created destination.
-    reconcileViewEntity(context, renameViewRequest.source());
-    reconcileViewEntity(context, renameViewRequest.destination());
+    bestEffortReconcileViewEntity(context, renameViewRequest.source());
+    bestEffortReconcileViewEntity(context, renameViewRequest.destination());
   }
 
   /**
@@ -218,6 +218,20 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
 
     if (dispatcher.viewExists(context, viewIdentifier)) {
       importView(context.catalogName(), viewIdentifier.namespace(), viewIdentifier.name());
+    }
+  }
+
+  private void bestEffortReconcileViewEntity(
+      IcebergRequestContext context, TableIdentifier viewIdentifier) {
+    try {
+      reconcileViewEntity(context, viewIdentifier);
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "Failed to reconcile Gravitino view entity after the Iceberg backend operation "
+              + "succeeded. catalog={}, view={}",
+          context.catalogName(),
+          viewIdentifier,
+          e);
     }
   }
 
