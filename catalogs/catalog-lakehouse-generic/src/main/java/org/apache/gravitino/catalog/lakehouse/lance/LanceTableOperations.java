@@ -152,7 +152,7 @@ public class LanceTableOperations extends ManagedTableOperations {
       }
       columns = extractColumns(dataset.getSchema());
     } catch (Exception e) {
-      LOG.debug(
+      LOG.warn(
           "Failed to load Lance schema from location {} for table {}. Return stored metadata.",
           location,
           ident,
@@ -414,10 +414,16 @@ public class LanceTableOperations extends ManagedTableOperations {
   }
 
   private SchemaRefreshMode schemaRefreshMode() {
-    return Optional.ofNullable(catalogProperties.get(LanceConstants.LANCE_SCHEMA_REFRESH_MODE))
-        .map(mode -> mode.trim().replace('-', '_').toUpperCase())
-        .map(SchemaRefreshMode::valueOf)
-        .orElse(SchemaRefreshMode.DECLARED_ONLY);
+    String raw = catalogProperties.get(LanceConstants.LANCE_SCHEMA_REFRESH_MODE);
+    if (StringUtils.isBlank(raw)) {
+      return SchemaRefreshMode.DECLARED_ONLY;
+    }
+    try {
+      return SchemaRefreshMode.valueOf(raw.trim().replace('-', '_').toUpperCase());
+    } catch (IllegalArgumentException e) {
+      LOG.warn("Unknown schema refresh mode '{}', falling back to DECLARED_ONLY", raw);
+      return SchemaRefreshMode.DECLARED_ONLY;
+    }
   }
 
   private boolean isDeclaredOnly(Table table) {

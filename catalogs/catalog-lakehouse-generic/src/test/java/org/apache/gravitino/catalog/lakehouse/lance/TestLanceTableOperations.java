@@ -275,6 +275,62 @@ public class TestLanceTableOperations {
   }
 
   @Test
+  public void testLoadEmptySchemaTableRefreshesFromDataset() throws Exception {
+    NameIdentifier ident = NameIdentifier.of("schema", "table");
+    String location = tempDir.resolve("empty-schema-table").toString();
+    TableEntity tableEntity =
+        tableEntity(ident, List.of(), Map.of(Table.PROPERTY_LOCATION, location));
+    when(store.get(eq(ident), eq(Entity.EntityType.TABLE), eq(TableEntity.class)))
+        .thenReturn(tableEntity);
+    when(idGenerator.nextId()).thenReturn(10L, 11L);
+    when(store.update(eq(ident), eq(TableEntity.class), eq(Entity.EntityType.TABLE), any()))
+        .thenAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              Function<TableEntity, TableEntity> updater = invocation.getArgument(3);
+              return updater.apply(tableEntity);
+            });
+
+    Dataset dataset = mock(Dataset.class);
+    when(dataset.getSchema())
+        .thenReturn(
+            new org.apache.arrow.vector.types.pojo.Schema(
+                List.of(Field.nullable("col1", new ArrowType.Utf8()))));
+    when(dataset.version()).thenReturn(5L);
+    Mockito.doReturn(dataset).when(lanceTableOps).openDataset(location, Map.of());
+
+    Table loadedTable =
+        PrincipalUtils.doAs(new UserPrincipal("tester"), () -> lanceTableOps.loadTable(ident));
+
+    Assertions.assertEquals(1, loadedTable.columns().length);
+    Assertions.assertEquals("col1", loadedTable.columns()[0].name());
+    Assertions.assertEquals(Types.StringType.get(), loadedTable.columns()[0].dataType());
+    Assertions.assertEquals("5", loadedTable.properties().get(LANCE_TABLE_VERSION));
+  }
+
+  @Test
+  public void testLoadTableFallsBackWhenDatasetOpenFails() throws Exception {
+    NameIdentifier ident = NameIdentifier.of("schema", "table");
+    String location = tempDir.resolve("broken-table").toString();
+    TableEntity tableEntity =
+        tableEntity(
+            ident,
+            List.of(),
+            Map.of(Table.PROPERTY_LOCATION, location, LANCE_TABLE_DECLARED, "true"));
+    when(store.get(eq(ident), eq(Entity.EntityType.TABLE), eq(TableEntity.class)))
+        .thenReturn(tableEntity);
+    Mockito.doThrow(new RuntimeException("dataset not found"))
+        .when(lanceTableOps)
+        .openDataset(location, Map.of());
+
+    Table loadedTable = lanceTableOps.loadTable(ident);
+
+    Assertions.assertEquals(0, loadedTable.columns().length);
+    verify(store, never())
+        .update(eq(ident), eq(TableEntity.class), eq(Entity.EntityType.TABLE), any());
+  }
+
+  @Test
   public void testHandleLanceTableChangeRespectsOrder() {
     Table table = mock(Table.class);
     when(table.properties()).thenReturn(Map.of(Table.PROPERTY_LOCATION, "location"));
