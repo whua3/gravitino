@@ -222,8 +222,10 @@ CREATE TABLE IF NOT EXISTS `group_meta` (
     `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'group current version',
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'group last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'group deleted at',
+    `updated_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'updated at',
     PRIMARY KEY (`group_id`),
-    UNIQUE KEY `uk_mid_gr_del` (`metalake_id`, `group_name`, `deleted_at`)
+    UNIQUE KEY `uk_mid_gr_del` (`metalake_id`, `group_name`, `deleted_at`),
+    KEY `idx_group_meta_name_del_upd` (`metalake_id`, `group_name`, `deleted_at`, `updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'group metadata';
 
 CREATE TABLE IF NOT EXISTS `group_role_rel` (
@@ -260,18 +262,18 @@ CREATE TABLE IF NOT EXISTS `idp_group_meta` (
     UNIQUE KEY `uk_ign_del` (`group_name`, `deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'local IdP group metadata';
 
-CREATE TABLE IF NOT EXISTS `idp_group_user_rel` (
+CREATE TABLE IF NOT EXISTS `idp_user_group_rel` (
     `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
-    `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'idp group id',
     `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'idp user id',
+    `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'idp group id',
     `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp relation current version',
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp relation last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'idp relation deleted at',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_igiu_del` (`group_id`, `user_id`, `deleted_at`),
-    KEY `idx_iug_gid` (`group_id`),
-    KEY `idx_iug_uid` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'local IdP group user relation';
+    UNIQUE KEY `uk_iuig_del` (`user_id`, `group_id`, `deleted_at`),
+    KEY `idx_iuig_uid` (`user_id`),
+    KEY `idx_iuig_gid` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'local IdP user group relation';
 
 CREATE TABLE IF NOT EXISTS `tag_meta` (
     `tag_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'tag id',

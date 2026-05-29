@@ -282,12 +282,13 @@ public class TestTableOperationDispatcher extends TestOperationDispatcher {
     Table table =
         tableOperationDispatcher.createTable(
             tableIdent, columns, "comment", props, new Transform[0]);
+    TableEntity importedTableEntity = entityStore.get(tableIdent, TABLE, TableEntity.class);
 
     AuditInfo concurrentAudit =
         AuditInfo.builder().withCreator("concurrent").withCreateTime(Instant.now()).build();
     TableEntity concurrentTableEntity =
         TableEntity.builder()
-            .withId(999L)
+            .withId(importedTableEntity.id())
             .withName(tableIdent.name())
             .withNamespace(tableIdent.namespace())
             .withColumns(
@@ -299,8 +300,13 @@ public class TestTableOperationDispatcher extends TestOperationDispatcher {
             .withAuditInfo(concurrentAudit)
             .build();
 
+    // Simulate HA race: first two gets return not-found (so both the pre-import check and the
+    // internalLoadTable inside importTable proceed to store.put), then put throws
+    // EntityAlreadyExistsException, and the dispatcher-level retry sees the entity on the third
+    // get.
     reset(entityStore);
     doThrow(new NoSuchEntityException("mock error"))
+        .doThrow(new NoSuchEntityException("mock error"))
         .doReturn(concurrentTableEntity)
         .when(entityStore)
         .get(any(), eq(Entity.EntityType.TABLE), any());
@@ -312,6 +318,68 @@ public class TestTableOperationDispatcher extends TestOperationDispatcher {
         Assertions.assertDoesNotThrow(() -> tableOperationDispatcher.loadTable(tableIdent));
     Assertions.assertEquals(tableIdent.name(), loadedTable.name());
     Assertions.assertEquals("comment", loadedTable.comment());
+  }
+
+  @Test
+  public void testConcurrentImportTableFailsOnMismatchedIdentifier() throws IOException {
+    Namespace tableNs = Namespace.of(metalake, catalog, "schemaConcurrentMismatch");
+    Map<String, String> props = ImmutableMap.of("k1", "v1", "k2", "v2");
+    schemaOperationDispatcher.createSchema(NameIdentifier.of(tableNs.levels()), "comment", props);
+
+    NameIdentifier tableIdent = NameIdentifier.of(tableNs, "tableConcurrentMismatch");
+    Column[] columns =
+        new Column[] {
+          TestColumn.builder()
+              .withName("col1")
+              .withPosition(0)
+              .withType(Types.StringType.get())
+              .build(),
+          TestColumn.builder()
+              .withName("col2")
+              .withPosition(1)
+              .withType(Types.StringType.get())
+              .build()
+        };
+
+    Table table =
+        tableOperationDispatcher.createTable(
+            tableIdent, columns, "comment", props, new Transform[0]);
+    TableEntity importedTableEntity = entityStore.get(tableIdent, TABLE, TableEntity.class);
+
+    AuditInfo concurrentAudit =
+        AuditInfo.builder().withCreator("concurrent").withCreateTime(Instant.now()).build();
+    TableEntity mismatchedTableEntity =
+        TableEntity.builder()
+            .withId(importedTableEntity.id() + 1)
+            .withName(tableIdent.name())
+            .withNamespace(tableIdent.namespace())
+            .withColumns(
+                IntStream.range(0, table.columns().length)
+                    .mapToObj(
+                        i ->
+                            ColumnEntity.toColumnEntity(table.columns()[i], i, 0L, concurrentAudit))
+                    .collect(Collectors.toList()))
+            .withAuditInfo(concurrentAudit)
+            .build();
+
+    // Simulate genuine multi-catalog conflict: put fails, and the dispatcher-level retry finds
+    // an entity with a mismatched ID (operateOnEntity returns null → imported=false → error
+    // thrown).
+    reset(entityStore);
+    doThrow(new NoSuchEntityException("mock error"))
+        .doThrow(new NoSuchEntityException("mock error"))
+        .doReturn(mismatchedTableEntity)
+        .when(entityStore)
+        .get(any(), eq(Entity.EntityType.TABLE), any());
+    doThrow(new EntityAlreadyExistsException("mock conflict"))
+        .when(entityStore)
+        .put(any(), anyBoolean());
+
+    UnsupportedOperationException exception =
+        Assertions.assertThrows(
+            UnsupportedOperationException.class,
+            () -> tableOperationDispatcher.loadTable(tableIdent));
+    Assertions.assertTrue(exception.getMessage().contains("Table managed by multiple catalogs"));
   }
 
   @Test
