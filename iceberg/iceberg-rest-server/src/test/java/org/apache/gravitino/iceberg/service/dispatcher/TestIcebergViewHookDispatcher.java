@@ -266,7 +266,7 @@ public class TestIcebergViewHookDispatcher {
 
     verify(mockExecutor, times(1)).dropView(mockContext, viewIdent);
     NameIdentifier expectedIdent =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, viewIdent);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, viewIdent, ":");
     verify(mockEntityStore, never()).delete(eq(expectedIdent), eq(Entity.EntityType.VIEW));
     verify(mockViewDispatcher, times(1)).loadView(eq(expectedIdent));
   }
@@ -280,7 +280,7 @@ public class TestIcebergViewHookDispatcher {
 
     verify(mockExecutor, times(1)).dropView(mockContext, viewIdent);
     NameIdentifier expectedIdent =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, viewIdent);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, viewIdent, ":");
     verify(mockEntityStore, times(1)).delete(eq(expectedIdent), eq(Entity.EntityType.VIEW));
     verify(mockViewDispatcher, times(1)).loadView(eq(expectedIdent));
   }
@@ -350,9 +350,9 @@ public class TestIcebergViewHookDispatcher {
     hookDispatcher.renameView(mockContext, renameRequest);
 
     NameIdentifier sourceGravitinoIdent =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, sourceIdent);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, sourceIdent, ":");
     NameIdentifier destGravitinoIdent =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, destIdent);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, destIdent, ":");
     verify(mockEntityStore, times(1)).delete(eq(sourceGravitinoIdent), eq(Entity.EntityType.VIEW));
     verify(mockViewDispatcher, times(1)).loadView(eq(destGravitinoIdent));
   }
@@ -366,7 +366,7 @@ public class TestIcebergViewHookDispatcher {
     when(mockExecutor.viewExists(mockContext, sourceIdent)).thenReturn(false);
 
     NameIdentifier sourceGravitinoIdent =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, sourceIdent);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(METALAKE, CATALOG, sourceIdent, ":");
     doThrow(new IOException("IO error"))
         .when(mockEntityStore)
         .delete(eq(sourceGravitinoIdent), eq(Entity.EntityType.VIEW));

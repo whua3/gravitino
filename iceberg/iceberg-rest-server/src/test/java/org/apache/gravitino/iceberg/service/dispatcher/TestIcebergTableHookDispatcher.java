@@ -193,7 +193,8 @@ public class TestIcebergTableHookDispatcher {
 
     verify(mockDispatcher).dropTable(mockContext, tableId, false);
     NameIdentifier expectedIdentifier =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(TEST_METALAKE, TEST_CATALOG, tableId);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(
+            TEST_METALAKE, TEST_CATALOG, tableId, ":");
     verify(mockEntityStore, never()).delete(expectedIdentifier, Entity.EntityType.TABLE);
     verify(mockTableDispatcher).loadTable(expectedIdentifier);
   }
@@ -207,7 +208,8 @@ public class TestIcebergTableHookDispatcher {
 
     verify(mockDispatcher).dropTable(mockContext, tableId, false);
     NameIdentifier expectedIdentifier =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(TEST_METALAKE, TEST_CATALOG, tableId);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(
+            TEST_METALAKE, TEST_CATALOG, tableId, ":");
     verify(mockEntityStore).delete(expectedIdentifier, Entity.EntityType.TABLE);
     verify(mockTableDispatcher).loadTable(expectedIdentifier);
   }
@@ -287,9 +289,9 @@ public class TestIcebergTableHookDispatcher {
     hookDispatcher.renameTable(mockContext, request);
 
     NameIdentifier sourceIdentifier =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(TEST_METALAKE, TEST_CATALOG, source);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(TEST_METALAKE, TEST_CATALOG, source, ":");
     NameIdentifier destIdentifier =
-        IcebergIdentifierUtils.toGravitinoTableIdentifier(TEST_METALAKE, TEST_CATALOG, dest);
+        IcebergIdentifierUtils.toGravitinoTableIdentifier(TEST_METALAKE, TEST_CATALOG, dest, ":");
     verify(mockEntityStore).delete(sourceIdentifier, Entity.EntityType.TABLE);
     verify(mockTableDispatcher).loadTable(destIdentifier);
   }
