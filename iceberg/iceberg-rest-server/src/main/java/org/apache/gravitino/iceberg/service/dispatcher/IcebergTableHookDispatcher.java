@@ -32,6 +32,7 @@ import org.apache.gravitino.iceberg.service.authorization.IcebergRESTServerConte
 import org.apache.gravitino.listener.api.event.IcebergRequestContext;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.utils.HierarchicalSchemaUtil;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.apache.iceberg.UpdateRequirement;
 import org.apache.iceberg.catalog.Namespace;
@@ -120,12 +121,13 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
   @Override
   public void renameTable(IcebergRequestContext context, RenameTableRequest renameTableRequest) {
     dispatcher.renameTable(context, renameTableRequest);
+    String separator = HierarchicalSchemaUtil.schemaSeparator();
     NameIdentifier tableSource =
         IcebergIdentifierUtils.toGravitinoTableIdentifier(
-            metalake, context.catalogName(), renameTableRequest.source());
+            metalake, context.catalogName(), renameTableRequest.source(), separator);
     NameIdentifier tableDest =
         IcebergIdentifierUtils.toGravitinoTableIdentifier(
-            metalake, context.catalogName(), renameTableRequest.destination());
+            metalake, context.catalogName(), renameTableRequest.destination(), separator);
     EntityStore store = GravitinoEnv.getInstance().entityStore();
     try {
       if (store != null) {
@@ -201,7 +203,6 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
     // but not in Gravitino, and silently swallowing that would mislead callers into thinking the
     // entity is registered. Surface the failure so the caller can react.
     importTableEntity(context.catalogName(), namespace, tableName);
-
     IcebergOwnershipUtils.setTableOwner(
         metalake,
         context.catalogName(),
@@ -216,7 +217,10 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
     if (tableDispatcher != null) {
       tableDispatcher.loadTable(
           IcebergIdentifierUtils.toGravitinoTableIdentifier(
-              metalake, catalogName, TableIdentifier.of(namespace, tableName)));
+              metalake,
+              catalogName,
+              TableIdentifier.of(namespace, tableName),
+              HierarchicalSchemaUtil.schemaSeparator()));
     }
   }
 
@@ -258,7 +262,7 @@ public class IcebergTableHookDispatcher implements IcebergTableOperationDispatch
       if (store != null) {
         store.delete(
             IcebergIdentifierUtils.toGravitinoTableIdentifier(
-                metalake, catalogName, tableIdentifier),
+                metalake, catalogName, tableIdentifier, HierarchicalSchemaUtil.schemaSeparator()),
             Entity.EntityType.TABLE);
       }
     } catch (NoSuchEntityException ignore) {

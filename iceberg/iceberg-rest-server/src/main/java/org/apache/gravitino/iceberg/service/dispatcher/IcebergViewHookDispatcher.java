@@ -28,6 +28,7 @@ import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.iceberg.common.utils.IcebergIdentifierUtils;
 import org.apache.gravitino.listener.api.event.IcebergRequestContext;
 import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.utils.HierarchicalSchemaUtil;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.rest.requests.CreateViewRequest;
@@ -117,12 +118,13 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
     dispatcher.renameView(context, renameViewRequest);
 
     // Update view in Gravitino entity store with new name
+    String separator = HierarchicalSchemaUtil.schemaSeparator();
     NameIdentifier sourceIdent =
         IcebergIdentifierUtils.toGravitinoTableIdentifier(
-            metalake, context.catalogName(), renameViewRequest.source());
+            metalake, context.catalogName(), renameViewRequest.source(), separator);
     NameIdentifier destIdent =
         IcebergIdentifierUtils.toGravitinoTableIdentifier(
-            metalake, context.catalogName(), renameViewRequest.destination());
+            metalake, context.catalogName(), renameViewRequest.destination(), separator);
 
     EntityStore store = GravitinoEnv.getInstance().entityStore();
     try {
@@ -184,7 +186,10 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
       try {
         viewDispatcher.loadView(
             IcebergIdentifierUtils.toGravitinoTableIdentifier(
-                metalake, catalogName, TableIdentifier.of(namespace, viewName)));
+                metalake,
+                catalogName,
+                TableIdentifier.of(namespace, viewName),
+                HierarchicalSchemaUtil.schemaSeparator()));
         LOG.info(
             "Successfully imported view into Gravitino: {}.{}.{}.{}",
             metalake,
@@ -241,7 +246,7 @@ public class IcebergViewHookDispatcher implements IcebergViewOperationDispatcher
       if (store != null) {
         store.delete(
             IcebergIdentifierUtils.toGravitinoTableIdentifier(
-                metalake, catalogName, viewIdentifier),
+                metalake, catalogName, viewIdentifier, HierarchicalSchemaUtil.schemaSeparator()),
             Entity.EntityType.VIEW);
         LOG.info(
             "Successfully removed view from Gravitino entity store: {}.{}.{}.{}",
